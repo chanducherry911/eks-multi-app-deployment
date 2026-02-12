@@ -1,1 +1,47 @@
-.
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        app: [app1, app2, app3]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin 131127508996.dkr.ecr.ap-south-2.amazonaws.com
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ matrix.app }} ./${{ matrix.app }}
+          docker tag ${{ matrix.app }}:latest 131127508996.dkr.ecr.ap-south-2.amazonaws.com/${{ matrix.app }}:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push 131127508996.dkr.ecr.ap-south-2.amazonaws.com/${{ matrix.app }}:latest
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f k8s/${{ matrix.app }}-deployment.yaml
